@@ -1,0 +1,833 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>AID 인증 분포 분석 (IT/비IT)</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --card: #111a2e;
+      --text: #e6eefc;
+      --muted: #9fb2d6;
+      --line: rgba(255,255,255,0.12);
+      --accent: #6ea8fe;
+      --ok: #3ddc97;
+      --warn: #ffcc66;
+    }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans KR", Arial, sans-serif;
+      background: radial-gradient(1200px 800px at 20% 0%, #142044 0%, var(--bg) 55%);
+      color: var(--text);
+    }
+
+    /* 0) 가로폭 조금 확대 */
+    .wrap { max-width: 1300px; margin: 0 auto; padding: 24px 16px 60px; }
+
+    h1 { font-size: 22px; margin: 0 0 10px; }
+    .sub { color: var(--muted); margin: 0 0 18px; line-height: 1.5; }
+
+    /* 새 레이아웃:
+       - 상단: 업로드 카드(전체폭)
+       - 중단: 인증율 카드 + 핵심 인증율 카드 (가로 2열)
+       - 하단: 개인조회 카드 (전체폭)
+    */
+    /* .gridTop { display: grid; grid-template-columns: 1fr; gap: 14px; }
+    .gridMid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+    .gridBottom { display: grid; grid-template-columns: 1fr; gap: 14px; margin-top: 14px; } */
+
+
+    .gridTopRow { display: grid; grid-template-columns: 1fr; gap: 14px; }
+    .gridMidRow { display: grid; grid-template-columns: 1fr; gap: 14px; }
+
+    @media (min-width: 980px) {
+      .gridTopRow { grid-template-columns: 1fr 1fr; }
+      .gridMidRow { grid-template-columns: 1fr 1fr; }
+    }
+
+
+    @media (min-width: 980px) {
+      .gridMid { grid-template-columns: 1fr 1fr; }
+    }
+
+    .card {
+      background: rgba(17, 26, 46, 0.85);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: 0 18px 50px rgba(0,0,0,0.3);
+      backdrop-filter: blur(8px);
+    }
+    .row { display:flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .row > * { margin: 0; }
+    .sp { height: 1px; background: var(--line); margin: 14px 0; }
+    label { font-size: 13px; color: var(--muted); }
+    input[type="file"] { width: 100%; }
+
+    input[type="text"], select {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      outline: none;
+    }
+    input[type="text"]::placeholder { color: rgba(230,238,252,0.45); }
+
+    button {
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: rgba(110,168,254,0.18);
+      color: var(--text);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    button:hover { background: rgba(110,168,254,0.28); }
+
+    .pill {
+      display:inline-flex; align-items:center; gap:6px;
+      padding: 6px 10px; border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.06);
+      color: var(--muted);
+      font-size: 15px;
+      color: antiquewhite;
+    }
+    .pill strong { color: var(--text); font-weight: 700; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+    }
+    th, td {
+      padding: 10px 10px;
+      border-bottom: 1px solid var(--line);
+      text-align: right;
+      font-size: 13px;
+    }
+    th { text-align: right; color: var(--muted); background: rgba(255,255,255,0.04); }
+    th:first-child, td:first-child { text-align: left; }
+    tr:last-child td { border-bottom: none; }
+
+    .muted { color: var(--muted); }
+    .good { color: var(--ok); font-weight: 700; }
+    .warn { color: var(--warn); font-weight: 700; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    .note { color: var(--muted); font-size: 12px; line-height: 1.45; }
+
+    .kvs { display:grid; grid-template-columns: 1fr; gap: 10px; }
+    @media (min-width: 820px) { .kvs { grid-template-columns: 1fr 1fr; } }
+
+    .kv {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.05);
+      border-radius: 12px;
+      padding: 10px;
+    }
+    .kv .k { color: var(--muted); font-size: 12px; }
+    .kv .v { font-size: 15px; margin-top: 6px; font-weight: 700; }
+
+    .controlsGrid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+      align-items: end;
+    }
+    @media (min-width: 820px) {
+      .controlsGrid {
+        grid-template-columns: 1fr 1fr auto;
+      }
+    }
+
+    /* ✅ 2) (추가) 모달 CSS: 기존 <style> 안에 추가 */
+    .modal { position: fixed; inset: 0; display: none; z-index: 9999; }
+    .modal.is-open { display: block; }
+    .modal__backdrop {
+      position: absolute; inset: 0;
+      background: rgba(0,0,0,0.55);
+      backdrop-filter: blur(2px);
+    }
+    .modal__panel {
+      position: absolute;
+      left: 50%; top: 50%;
+      transform: translate(-50%, -50%);
+      width: min(920px, calc(100vw - 28px));
+      max-height: min(84vh, 820px);
+      overflow: auto;
+      border-radius: 18px;
+      background: rgba(17, 26, 46, 0.92);
+      border: 1px solid var(--line);
+      box-shadow: 0 30px 80px rgba(0,0,0,0.55);
+      padding: 16px;
+    }
+    .modal__head { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+    .modal__title { font-size: 16px; font-weight: 800; }
+    .modal__sub { font-size: 12px; margin-top: 4px; }
+    .modal__close {
+      padding: 8px 10px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      cursor: pointer;
+    }
+    .modal__close:hover { background: rgba(255,255,255,0.10); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>AID 인증 분포 분석 (IT/비IT)</h1>
+    <p class="sub">
+      엑셀(.xlsx) 업로드 후, IT/비IT 계열별·전체 인증 분포(인원+비율)를 표시합니다.<br/>
+      학번 입력 시 개인 이수현황(전공/교양/비교과/공모전/자격증/마이크로트랙)과 계산 레벨을 보여줍니다.
+    </p>
+
+    <!-- TOP: Upload + Summary -->
+     <div class="gridTopRow">
+      <!-- Upload + Download -->
+      <div class="card">
+        <div class="row" style="justify-content: space-between;">
+          <div>
+            <div class="pill">상태: <strong id="statusText">엑셀을 업로드하세요</strong></div>
+          </div>
+          <div class="pill">기준: <strong>IT/비IT 계열 인증 최종 로직</strong></div>
+        </div>
+
+        <div class="sp"></div>
+
+        <!-- <label >엑셀 파일 업로드 (.xlsx)</label> -->
+        <h3 style="margin:0 0 10px; font-size:16px; color: yellow;">엑셀 파일 업로드 (.xlsx)</h3>
+        <input id="fileInput" type="file" accept=".xlsx,.xls" />
+
+        <div class="sp"></div>
+
+        <div class="row" style="justify-content: space-between; ">
+          <div class="pill">전체 대상자: <strong id="totalN">-</strong></div>
+          <div class="pill">IT: <strong id="itN">-</strong></div>
+          <div class="pill">비IT: <strong id="nonN">-</strong></div>
+        </div>
+
+        <div class="sp"></div>
+
+        <h3 style="margin:0 0 10px; font-size:16px; color: yellow;">필터 다운로드 (계열 + 레벨)</h3>
+        <div class="note">계열/레벨을 선택하면 해당 학생 목록을 엑셀로 내려받습니다.</div>
+
+        <div class="sp"></div>
+
+        <div class="controlsGrid">
+          <div>
+            <label>계열</label>
+            <select id="dlTrack" >
+              <option value="all">전체</option>
+              <option value="it계열">IT계열</option>
+              <option value="비it계열">비IT계열</option>
+            </select>
+          </div>
+          <div>
+            <label>레벨</label>
+            <select id="dlLevel">
+              <option value="all">전체</option>
+              <option value="1">레벨1</option>
+              <option value="2">레벨2</option>
+              <option value="3">레벨3</option>
+              <option value="4">레벨4</option>
+              <option value="0">레벨없음</option>
+            </select>
+          </div>
+          <div>
+            <button id="dlBtn">엑셀 다운로드</button>
+          </div>
+        </div>
+
+        <div class="sp"></div>
+
+        <div class="note">
+          - IT계열: Level 2~4 (Level 1 없음)<br/>
+          - 비IT계열: Level 1~4 (Level 1 게이트 + 추가성취 누적)
+        </div>
+      </div>
+
+      <!-- Personal Lookup -->
+      <div class="card">
+        <h3 style="margin:0 0 10px; font-size:16px; color: yellow;">개인 조회 (학번)</h3>
+        <div class="note">학번 예: <span class="mono">0001</span> ~ <span class="mono">1000</span></div>
+        <div class="sp"></div>
+
+        <label>학번 입력</label>
+        <div class="row" style="gap:8px;">
+          <input id="sidInput" type="text" placeholder="예) 0001" />
+          <button id="findBtn">조회</button>
+        </div>
+
+        <div class="sp"></div>
+
+        <div id="personArea" class="muted">학번을 입력하고 조회하면 결과가 표시됩니다.</div>
+      </div>
+    </div>
+
+    <!-- SECOND ROW: 인증율(가로 2열) -->
+    <div class="gridMidRow" style="margin-top:14px;">
+      <div class="card">
+        <h3 style="margin:0 0 10px; font-size:16px; color: yellow;">AID 인증율  (계열 × 레벨)</h3>
+          <div class="note" style="margin-bottom:10px;">
+          ✅ IT계열 : Level 2, 3, 4<br/>
+          ✅ 비IT계열 : Level 1, 2, 3, 4
+        </div>
+        <div id="aidRateArea" class="muted">데이터를 업로드하면 표가 표시됩니다.</div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin:0 0 10px; font-size:16px; color: yellow;">AID 핵심 융합인재 인증율 (계열 × 레벨)</h3>
+        <div class="note" style="margin-bottom:10px;">
+          ✅ IT계열 핵심: Level 3, 4<br/>
+          ✅ 비IT계열 핵심: Level 2, 3, 4
+        </div>
+        <div id="aidCoreArea" class="muted">데이터를 업로드하면 표가 표시됩니다.</div>
+      </div>
+    </div>    
+  </div>
+
+  <div id="personModal" class="modal" aria-hidden="true">
+    <div class="modal__backdrop" id="modalBackdrop"></div>
+      <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <div class="modal__head">
+          <div>
+            <div id="modalTitle" class="modal__title">개인 조회 결과</div>
+            <div id="modalSub" class="modal__sub muted">-</div>
+          </div>
+          <button id="modalCloseBtn" class="modal__close" aria-label="닫기">✕</button>
+        </div>
+        <div class="sp"></div>
+      <div id="modalBody" class="muted">내용</div>
+    </div>
+  </div>
+
+  <!-- SheetJS (XLSX) CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <script>
+    // ====== State ======
+    let rows = [];               // parsed rows
+    let indexBySid = new Map();  // 학번 -> row
+
+    const $ = (id) => document.getElementById(id);
+
+    // ====== Helpers ======
+    function toNum(v) {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : 0;
+    }
+
+    function normTrack(v) {
+      const s = String(v ?? "").trim().toLowerCase();
+      if (s === "it계열" || s === "it" || s === "it계열 ") return "it계열";
+      if (s === "비it계열" || s === "비it" || s === "nonit" || s === "비it계열 ") return "비it계열";
+      // 원본이 "비IT계열" 같이 섞여 있어도 처리
+      if (s.includes("it") && s.includes("비")) return "비it계열";
+      if (s.includes("it")) return "it계열";
+      return s || "비it계열";
+    }
+
+    function levelLabel(level) {
+      if (level === 0) return "레벨없음";
+      return "레벨" + level;
+    }
+
+    function percent(n, d) {
+      if (!d) return "0.0%";
+      return (Math.round((n / d) * 1000) / 10).toFixed(1) + "%";
+    }
+
+    // ====== Level Logic ======
+    // IT: achieved = (마이크로트랙>=2) + (비교과>=1) + (자격증>=1) + (공모전>=1)
+    // achieved 0 => 2, 1 => 3, >=2 => 4
+    function calcITLevel(r) {
+      let achieved = 0;
+      if (toNum(r["마이크로트랙"]) >= 2) achieved++;
+      if (toNum(r["비교과"]) >= 1) achieved++;
+      if (toNum(r["자격증"]) >= 1) achieved++;
+      if (toNum(r["공모전"]) >= 1) achieved++;
+      if (achieved >= 2) return 4;
+      if (achieved === 1) return 3;
+      return 2;
+    }
+
+    // 비IT: gate major>=1 & liberal>=1 & extra>=1
+    // add: (전공+마이크로트랙>=3), (교양>=2), (비교과>=2), (자격증>=1), (공모전>=1)
+    // add 0 => 1, add1=>2, add2=>3, add>=3=>4
+    function calcNonITLevel(r) {
+      const major = toNum(r["전공"]);
+      const liberal = toNum(r["교양"]);
+      const extra = toNum(r["비교과"]);
+      const micro = toNum(r["마이크로트랙"]);
+
+      if (!(major >= 1 && liberal >= 1 && extra >= 1)) return 0; // 레벨없음
+
+      let add = 0;
+      if (major + micro >= 3) add++;
+      if (liberal >= 2) add++;
+      if (extra >= 2) add++;
+      if (toNum(r["자격증"]) >= 1) add++;
+      if (toNum(r["공모전"]) >= 1) add++;
+
+      if (add === 0) return 1;
+      if (add === 1) return 2;
+      if (add === 2) return 3;
+      return 4;
+    }
+
+    function calcLevel(r) {
+      const track = normTrack(r["계열"]);
+      if (track === "it계열") return calcITLevel(r);
+      return calcNonITLevel(r);
+    }
+
+    // ====== Distribution Rendering (분리: 인증율 / 핵심인증율) ======
+    function renderDistributions() {
+      const itRows = rows.filter(r => normTrack(r["계열"]) === "it계열");
+      const nonRows = rows.filter(r => normTrack(r["계열"]) === "비it계열");
+
+      const totalN = rows.length;
+      const itN = itRows.length;
+      const nonN = nonRows.length;
+
+      $("totalN").textContent = totalN.toLocaleString();
+      $("itN").textContent = itN.toLocaleString();
+      $("nonN").textContent = nonN.toLocaleString();
+
+      // Count levels (1~4 only; 0 제외) for rate table
+      function countLevels(list) {
+        const dist = {1:0,2:0,3:0,4:0};
+        list.forEach(r => {
+          const lv = calcLevel(r);
+          if (lv >= 1 && lv <= 4) dist[lv]++;
+        });
+        return dist;
+      }
+
+      const itDist = countLevels(itRows);
+      const nonDist = countLevels(nonRows);
+
+      const totalDist = {
+        1: itDist[1] + nonDist[1],
+        2: itDist[2] + nonDist[2],
+        3: itDist[3] + nonDist[3],
+        4: itDist[4] + nonDist[4]
+      };
+
+      const itCert = itDist[1]+itDist[2]+itDist[3]+itDist[4];
+      const nonCert = nonDist[1]+nonDist[2]+nonDist[3]+nonDist[4];
+      const totalCert = itCert + nonCert;
+
+      // 핵심 융합인재
+      // IT: L3/L4만, 비IT: L2/L3/L4
+      const itCoreL2 = 0;
+      const itCoreL3 = itDist[3];
+      const itCoreL4 = itDist[4];
+      const itCoreSum = itCoreL3 + itCoreL4;
+
+      const nonCoreL2 = nonDist[2];
+      const nonCoreL3 = nonDist[3];
+      const nonCoreL4 = nonDist[4];
+      const nonCoreSum = nonCoreL2 + nonCoreL3 + nonCoreL4;
+
+      const totalCoreL2 = itCoreL2 + nonCoreL2;
+      const totalCoreL3 = itCoreL3 + nonCoreL3;
+      const totalCoreL4 = itCoreL4 + nonCoreL4;
+      const totalCoreSum = itCoreSum + nonCoreSum;
+
+      function cell(count, base) {
+        return `${count.toLocaleString()} (${percent(count, base)})`;
+      }
+      function dashCell() { return `–`; }
+
+      // TABLE: AID 인증율
+      const rateHtml = `
+        <table>
+          <thead>
+            <tr>
+              <th>계열</th>
+              <th>대상자수</th>
+              <th>레벨1</th>
+              <th>레벨2</th>
+              <th>레벨3</th>
+              <th>레벨4</th>
+              <th>합계(인증자)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>비IT계열</strong></td>
+              <td>${nonN.toLocaleString()}</td>
+              <td>${cell(nonDist[1], nonN)}</td>
+              <td>${cell(nonDist[2], nonN)}</td>
+              <td>${cell(nonDist[3], nonN)}</td>
+              <td>${cell(nonDist[4], nonN)}</td>
+              <td><strong>${cell(nonCert, nonN)}</strong></td>
+            </tr>
+            <tr>
+              <td><strong>IT계열</strong></td>
+              <td>${itN.toLocaleString()}</td>
+              <td>${cell(itDist[1], itN)}</td>
+              <td>${cell(itDist[2], itN)}</td>
+              <td>${cell(itDist[3], itN)}</td>
+              <td>${cell(itDist[4], itN)}</td>
+              <td><strong>${cell(itCert, itN)}</strong></td>
+            </tr>
+            <tr>
+              <td><strong>총합</strong></td>
+              <td>${totalN.toLocaleString()}</td>
+              <td>${cell(totalDist[1], totalN)}</td>
+              <td>${cell(totalDist[2], totalN)}</td>
+              <td>${cell(totalDist[3], totalN)}</td>
+              <td>${cell(totalDist[4], totalN)}</td>
+              <td><strong>${cell(totalCert, totalN)}</strong></td>
+            </tr>
+          </tbody>
+        </table>
+      `;
+
+      // TABLE: 핵심 인증율
+      const coreHtml = `
+        <table>
+          <thead>
+            <tr>
+              <th>계열</th>
+              <th>대상자수</th>
+              <th>핵심 L2</th>
+              <th>핵심 L3</th>
+              <th>핵심 L4</th>
+              <th>핵심 합계</th>
+              <th>핵심 인증율</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>비IT계열</strong></td>
+              <td>${nonN.toLocaleString()}</td>
+              <td>${cell(nonCoreL2, nonN)}</td>
+              <td>${cell(nonCoreL3, nonN)}</td>
+              <td>${cell(nonCoreL4, nonN)}</td>
+              <td><strong>${cell(nonCoreSum, nonN)}</strong></td>
+              <td><strong>${percent(nonCoreSum, nonN)}</strong></td>
+            </tr>
+            <tr>
+              <td><strong>IT계열</strong></td>
+              <td>${itN.toLocaleString()}</td>
+              <td>${dashCell()}</td>
+              <td>${cell(itCoreL3, itN)}</td>
+              <td>${cell(itCoreL4, itN)}</td>
+              <td><strong>${cell(itCoreSum, itN)}</strong></td>
+              <td><strong>${percent(itCoreSum, itN)}</strong></td>
+            </tr>
+            <tr>
+              <td><strong>총합</strong></td>
+              <td>${totalN.toLocaleString()}</td>
+              <td>${cell(totalCoreL2, totalN)}</td>
+              <td>${cell(totalCoreL3, totalN)}</td>
+              <td>${cell(totalCoreL4, totalN)}</td>
+              <td><strong>${cell(totalCoreSum, totalN)}</strong></td>
+              <td><strong>${percent(totalCoreSum, totalN)}</strong></td>
+            </tr>
+          </tbody>
+        </table>
+      `;
+
+      $("aidRateArea").innerHTML = rateHtml;
+      $("aidCoreArea").innerHTML = coreHtml;
+    }
+
+    // ====== Personal Lookup ======
+    function buildPersonView(r) {
+      const track = normTrack(r["계열"]);
+      const lv = calcLevel(r);
+
+      // 3) 학과 포함 (엑셀에 학과 컬럼이 없으면 ""로)
+      const dept = String(r["학과"] ?? "").trim();
+
+      const major = toNum(r["전공"]);
+      const liberal = toNum(r["교양"]);
+      const extra = toNum(r["비교과"]);
+      const award = toNum(r["공모전"]);
+      const cert = toNum(r["자격증"]);
+      const micro = toNum(r["마이크로트랙"]);
+
+      let reasons = [];
+      if (track === "it계열") {
+        const hits = [];
+        if (micro >= 2) hits.push("마이크로트랙≥2");
+        if (extra >= 1) hits.push("비교과≥1");
+        if (cert >= 1) hits.push("자격증≥1");
+        if (award >= 1) hits.push("공모전≥1");
+        reasons.push(`추가 성취 항목: ${hits.length ? hits.join(", ") : "없음"}`);
+      } else {
+        const gateOK = (major>=1 && liberal>=1 && extra>=1);
+        if (!gateOK) {
+          const miss = [];
+          if (major < 1) miss.push("전공≥1");
+          if (liberal < 1) miss.push("교양≥1");
+          if (extra < 1) miss.push("비교과≥1");
+          reasons.push(`Level1 기본요건 미충족: ${miss.join(", ")}`);
+        } else {
+          const hits = [];
+          if (major + micro >= 3) hits.push("전공합산(전공+마이크로트랙)≥3");
+          if (liberal >= 2) hits.push("교양≥2");
+          if (extra >= 2) hits.push("비교과≥2");
+          if (cert >= 1) hits.push("자격증≥1");
+          if (award >= 1) hits.push("공모전≥1");
+          reasons.push(`Level1 기본요건 충족 (전공≥1, 교양≥1, 비교과≥1)`);
+          reasons.push(`추가 성취(${hits.length}종): ${hits.length ? hits.join(", ") : "없음"}`);
+        }
+      }
+
+      const badgeClass = (lv >= 3) ? "good" : (lv === 0 ? "warn" : "");
+      const badgeText = levelLabel(lv);
+
+      return `
+        <div class="row" style="justify-content: space-between;">
+          <div class="pill">계열: <strong>${track}</strong></div>
+          <div class="pill">계산 레벨: <strong class="${badgeClass}">${badgeText}</strong></div>
+        </div>
+
+        <div class="sp"></div>
+
+        <div class="kvs">
+          <div class="kv"><div class="k">학번</div><div class="v mono">${String(r["학번"] ?? "")}</div></div>
+          <div class="kv"><div class="k">이름</div><div class="v">${String(r["이름"] ?? "")}</div></div>
+
+          <div class="kv"><div class="k">학과</div><div class="v">${dept || "-"}</div></div>
+          <div class="kv"><div class="k">계열</div><div class="v">${track}</div></div>
+
+          <div class="kv"><div class="k">전공</div><div class="v">${major}</div></div>
+          <div class="kv"><div class="k">교양</div><div class="v">${liberal}</div></div>
+
+          <div class="kv"><div class="k">비교과</div><div class="v">${extra}</div></div>
+          <div class="kv"><div class="k">마이크로트랙</div><div class="v">${micro}</div></div>
+
+          <div class="kv"><div class="k">자격증</div><div class="v">${cert}</div></div>
+          <div class="kv"><div class="k">공모전</div><div class="v">${award}</div></div>
+        </div>
+
+        <div class="sp"></div>
+
+        <div class="note">
+          <strong>판정 근거</strong><br/>
+          ${reasons.map(x => "• " + x).join("<br/>")}
+        </div>
+      `;
+    }
+
+    // function findStudent() {
+    //   const sidRaw = $("sidInput").value.trim();
+    //   if (!sidRaw) {
+    //     $("personArea").innerHTML = `<span class="warn">학번을 입력하세요.</span>`;
+    //     return;
+    //   }
+    //   const sid = sidRaw.padStart(4, "0");
+    //   const r = indexBySid.get(sid);
+    //   if (!r) {
+    //     $("personArea").innerHTML = `<span class="warn">학번 ${sid} 학생을 찾을 수 없습니다.</span>`;
+    //     return;
+    //   }
+    //   $("personArea").innerHTML = buildPersonView(r);
+    // }
+
+      /* ✅ 3) (추가/수정) JS: 모달 열고 닫기 + findStudent()를 모달로 출력하도록 수정
+     - 아래 코드를 기존 <script> 안에서 buildPersonView 아래 / findStudent 교체로 반영하세요
+  */
+
+  function openPersonModal(html, subText) {
+    const m = $("personModal");
+    $("modalBody").innerHTML = html;
+    $("modalSub").textContent = subText || "-";
+    m.classList.add("is-open");
+    m.setAttribute("aria-hidden", "false");
+
+    // 스크롤 잠금(선택)
+    document.body.style.overflow = "hidden";
+  }
+
+  function closePersonModal() {
+    const m = $("personModal");
+    m.classList.remove("is-open");
+    m.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+  }
+
+  // ✅ 기존 findStudent()를 아래로 "교체"
+  function findStudent() {
+    const sidRaw = $("sidInput").value.trim();
+    if (!sidRaw) {
+      openPersonModal(`<span class="warn">학번을 입력하세요.</span>`, "입력 오류");
+      return;
+    }
+    const sid = sidRaw.padStart(4, "0");
+    const r = indexBySid.get(sid);
+
+    if (!r) {
+      openPersonModal(`<span class="warn">학번 ${sid} 학생을 찾을 수 없습니다.</span>`, `학번: ${sid}`);
+      return;
+    }
+
+    const track = normTrack(r["계열"]);
+    const lv = calcLevel(r);
+    const dept = String(r["학과"] ?? "").trim();
+    const name = String(r["이름"] ?? "").trim();
+
+    // 모달에 결과 표시
+    openPersonModal(
+      buildPersonView(r),
+      `${sid} · ${name || "-"} · ${dept || "-"} · ${track} · ${levelLabel(lv)}`
+    );
+  }
+
+  // ✅ 이벤트 연결(기존 findBtn / Enter 연결은 그대로 두되, 아래 모달 닫기 이벤트 추가)
+  $("modalCloseBtn").addEventListener("click", closePersonModal);
+  $("modalBackdrop").addEventListener("click", closePersonModal);
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closePersonModal();
+  });
+
+    // ====== 4) 계열/레벨 필터 엑셀 다운로드 ======
+    function downloadFilteredExcel() {
+      if (!rows.length) {
+        alert("먼저 엑셀 파일을 업로드하세요.");
+        return;
+      }
+
+      const trackSel = $("dlTrack").value;   // all | it계열 | 비it계열
+      const levelSel = $("dlLevel").value;   // all | 0 | 1 | 2 | 3 | 4
+
+      const filtered = rows.filter(r => {
+        const t = normTrack(r["계열"]);
+        const lv = calcLevel(r);
+
+        const okTrack = (trackSel === "all") ? true : (t === trackSel);
+        const okLevel = (levelSel === "all") ? true : (String(lv) === String(levelSel));
+        return okTrack && okLevel;
+      });
+
+      // 내려받을 컬럼 구성 (필요하면 여기서 컬럼 추가 가능)
+      const exportRows = filtered.map(r => {
+        const t = normTrack(r["계열"]);
+        const lv = calcLevel(r);
+        return {
+          "학번": String(r["학번"] ?? ""),
+          "이름": String(r["이름"] ?? ""),
+          "학과": String(r["학과"] ?? ""),
+          "계열": t,
+          "레벨": levelLabel(lv),
+          "전공": toNum(r["전공"]),
+          "교양": toNum(r["교양"]),
+          "비교과": toNum(r["비교과"]),
+          "마이크로트랙": toNum(r["마이크로트랙"]),
+          "자격증": toNum(r["자격증"]),
+          "공모전": toNum(r["공모전"]),
+        };
+      });
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(exportRows);
+      XLSX.utils.book_append_sheet(wb, ws, "filtered");
+
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, "0");
+      const d = String(now.getDate()).padStart(2, "0");
+
+      const trackName = (trackSel === "all") ? "전체" : trackSel;
+      const levelName = (levelSel === "all") ? "전체" : levelLabel(Number(levelSel));
+
+      const filename = `AID_필터_${trackName}_${levelName}_${y}${m}${d}.xlsx`;
+      XLSX.writeFile(wb, filename);
+    }
+
+    // ====== Excel Parsing ======
+    function parseExcel(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const data = new Uint8Array(e.target.result);
+            const wb = XLSX.read(data, { type: "array" });
+
+            const sheetName = wb.SheetNames[0];
+            const ws = wb.Sheets[sheetName];
+
+            const json = XLSX.utils.sheet_to_json(ws, { defval: "" });
+            resolve(json);
+          } catch (err) {
+            reject(err);
+          }
+        };
+        reader.onerror = reject;
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+    function validateColumns(sample) {
+      // 학과는 "추가 표시"이므로 필수에서 제외
+      const need = ["계열","학번","이름","전공","교양","비교과","공모전","자격증","마이크로트랙"];
+      const missing = need.filter(k => !(k in sample));
+      return missing;
+    }
+
+    // ====== Events ======
+    $("fileInput").addEventListener("change", async (ev) => {
+      const file = ev.target.files?.[0];
+      if (!file) return;
+
+      $("statusText").textContent = "읽는 중...";
+      $("aidRateArea").textContent = "데이터를 파싱 중입니다...";
+      $("aidCoreArea").textContent = "데이터를 파싱 중입니다...";
+      $("personArea").textContent = "학번을 입력하고 조회하면 결과가 표시됩니다.";
+
+      try {
+        const json = await parseExcel(file);
+        if (!json.length) throw new Error("시트에 데이터가 없습니다.");
+
+        const missing = validateColumns(json[0]);
+        if (missing.length) {
+          throw new Error("필수 컬럼이 없습니다: " + missing.join(", "));
+        }
+
+        rows = json.map(r => {
+          const sid = String(r["학번"] ?? "").trim().padStart(4, "0");
+          return {
+            ...r,
+            "계열": normTrack(r["계열"]),
+            "학번": sid,
+            // 학과 컬럼 없으면 빈 문자열 유지
+            "학과": (r["학과"] ?? "").toString().trim()
+          };
+        });
+
+        indexBySid = new Map();
+        rows.forEach(r => indexBySid.set(r["학번"], r));
+
+        $("statusText").textContent = `업로드 완료 (${rows.length.toLocaleString()}명)`;
+        renderDistributions();
+
+      } catch (err) {
+        console.error(err);
+        $("statusText").textContent = "오류";
+        $("aidRateArea").innerHTML = `<span class="warn">엑셀을 읽는 중 오류: ${String(err.message || err)}</span>`;
+        $("aidCoreArea").innerHTML = `<span class="warn">엑셀을 읽는 중 오류: ${String(err.message || err)}</span>`;
+      }
+    });
+
+    $("findBtn").addEventListener("click", findStudent);
+    $("sidInput").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") findStudent();
+    });
+
+    $("dlBtn").addEventListener("click", downloadFilteredExcel);
+  </script>
+</body>
+</html>
